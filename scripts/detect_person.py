@@ -8,29 +8,26 @@ import os
 from pathlib import Path
 from tqdm import tqdm
 import numpy as np
-
-try:
-    from ultralytics import YOLO
-    YOLO_AVAILABLE = True
-except ImportError:
-    YOLO_AVAILABLE = False
-    YOLO = None
+from ultralytics import YOLO
 
 
 class PersonDetector:
-    """Detect and crop persons from frames using YOLO"""
 
     def __init__(self, model='yolo11n.pt', conf=0.5, device='cpu'):
-       
-        if not YOLO_AVAILABLE:
-            raise ImportError(
-                "ultralytics not installed. Install with: pip install ultralytics"
-            )
         
         self.conf = conf
         self.device = device
+        self.model_name = model
+        
+        # Check if it's a pose model
+        self.is_pose_model = '-pose' in model.lower()
         
         print(f"Loading YOLO model: {model}")
+        if self.is_pose_model:
+            print(f"  Type: Pose estimation (detection + keypoints)")
+        else:
+            print(f"  Type: Object detection")
+        
         try:
             self.yolo = YOLO(model)
             print(f"✓ YOLO model loaded successfully")
@@ -40,16 +37,8 @@ class PersonDetector:
             raise RuntimeError(f"Failed to load YOLO model '{model}': {e}")
     
     def detect_persons(self, frame):
-        """
-        Detect persons in a frame
-        
-        Args:
-            frame (np.ndarray): Input frame (BGR)
-        
-        Returns:
-            list: List of bounding boxes [(x1, y1, x2, y2, confidence), ...]
-        """
-        # Run YOLO detection
+
+        # Run YOLO detection/pose estimation
         results = self.yolo(frame, conf=self.conf, device=self.device, verbose=False)
         
         persons = []
@@ -61,27 +50,27 @@ class PersonDetector:
         
         # Extract person detections (class 0 in COCO)
         if result.boxes is not None:
-            for box in result.boxes:
+            for i, box in enumerate(result.boxes):
                 cls = int(box.cls[0])
                 if cls == 0:  # Person class
                     x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
                     confidence = float(box.conf[0])
-                    persons.append((int(x1), int(y1), int(x2), int(y2), confidence))
+                    
+                    # Add keypoints if pose model
+                    if self.is_pose_model and result.keypoints is not None:
+                        if i < len(result.keypoints.xy):
+                            keypoints = result.keypoints.xy[i].cpu().numpy()  # Shape: (17, 2)
+                            keypoint_conf = result.keypoints.conf[i].cpu().numpy() if result.keypoints.conf is not None else None
+                            persons.append((int(x1), int(y1), int(x2), int(y2), confidence, keypoints, keypoint_conf))
+                        else:
+                            persons.append((int(x1), int(y1), int(x2), int(y2), confidence, None, None))
+                    else:
+                        persons.append((int(x1), int(y1), int(x2), int(y2), confidence))
         
         return persons
     
     def crop_person(self, frame, bbox, padding=10):
-        """
-        Crop person from frame with padding
-        
-        Args:
-            frame (np.ndarray): Input frame
-            bbox (tuple): Bounding box (x1, y1, x2, y2, conf)
-            padding (int): Padding around bounding box
-        
-        Returns:
-            np.ndarray: Cropped person image
-        """
+
         x1, y1, x2, y2 = bbox[:4]
         h, w = frame.shape[:2]
         
@@ -97,44 +86,79 @@ class PersonDetector:
         return cropped
     
     def draw_detections(self, frame, persons):
-        """
-        Draw bounding boxes on frame
-        
-        Args:
-            frame (np.ndarray): Input frame
-            persons (list): List of person detections
-        
-        Returns:
-            np.ndarray: Frame with drawn boxes
-        """
+
         frame_copy = frame.copy()
         
+        # COCO pose keypoint connections (skeleton)
+        pose_connections = [
+            (0, 1), (0, 2), (1, 3), (2, 4),  # Head
+            (5, 6), (5, 7), (7, 9), (6, 8), (8, 10),  # Arms
+            (5, 11), (6, 12), (11, 12),  # Torso
+            (11, 13), (13, 15), (12, 14), (14, 16)  # Legs
+        ]
+        
+        colors ={
+            "head": (0, 255, 255),
+            "arms": (255, 0, 255),  
+            "torso": (0, 255, 0),
+            "legs": (255, 0, 0)
+        }
+        connection_colors = (
+        [colors["head"]] * 4 +
+        [colors["arms"]] * 5 +
+        [colors["torso"]] * 3 +
+        [colors["legs"]] * 4
+    )
         for person in persons:
-            x1, y1, x2, y2, conf = person
+            x1, y1, x2, y2, conf = person[:5]
             
-            # Draw rectangle
+            # Draw bounding box
             cv2.rectangle(frame_copy, (x1, y1), (x2, y2), (0, 255, 0), 2)
             
             # Draw label
-            label = f"Person {conf:.2f}"
-            cv2.putText(frame_copy, label, (x1, y1 - 10),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            label = f"Person+Pose {conf:.2f}" if self.is_pose_model else f"Person {conf:.2f}"
+            cv2.putText(
+            frame_copy, label, (x1, y1 - 10),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2
+            )
+            
+            # Draw pose keypoints if available
+            if self.is_pose_model and len(person) > 5:
+             keypoints = person[5]
+            keypoint_conf = person[6] if len(person) > 6 else None
+            
+            if keypoints is not None:
+                # Draw keypoints
+                
+                for i, (x, y) in enumerate(keypoints):
+                    if keypoint_conf is None or keypoint_conf[i] > 0.5:
+                        cv2.circle(frame_copy, (int(x), int(y)), 3, (0, 0, 255), -1)
+                        cv2.putText(
+                            frame_copy, str(i), (int(x) + 5, int(y) - 5),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA
+                        )
+
+                
+                # Draw skeleton with multiple colors
+                for idx, connection in enumerate(pose_connections):
+                    pt1_idx, pt2_idx = connection
+                    if pt1_idx < len(keypoints) and pt2_idx < len(keypoints):
+                        pt1 = keypoints[pt1_idx]
+                        pt2 = keypoints[pt2_idx]
+                        color = connection_colors[idx]
+                        
+                        if keypoint_conf is not None:
+                            if keypoint_conf[pt1_idx] > 0.5 and keypoint_conf[pt2_idx] > 0.5:
+                                cv2.line(frame_copy, (int(pt1[0]), int(pt1[1])),
+                                         (int(pt2[0]), int(pt2[1])), color, 2)
+                        else:
+                            cv2.line(frame_copy, (int(pt1[0]), int(pt1[1])),
+                                     (int(pt2[0]), int(pt2[1])), color, 2)
         
         return frame_copy
     
     def process_folder(self, input_dir, output_dir, save_bbox_images=True, save_crops=True):
-        """
-        Process all frames in a folder
-        
-        Args:
-            input_dir (str): Directory with input frames
-            output_dir (str): Directory to save detected persons
-            save_bbox_images (bool): Save images with bounding boxes drawn
-            save_crops (bool): Save cropped person images
-        
-        Returns:
-            int: Number of persons detected
-        """
+
         Path(output_dir).mkdir(parents=True, exist_ok=True)
         
         if save_bbox_images:
@@ -190,6 +214,26 @@ class PersonDetector:
                             crop_name = f"{frame_path.stem}_person{i}.jpg"
                             crop_path = os.path.join(crops_dir, crop_name)
                             cv2.imwrite(crop_path, cropped)
+                            
+                            # Save keypoints data if pose model
+                            if self.is_pose_model and len(person) > 5 and person[5] is not None:
+                                keypoints_name = f"{frame_path.stem}_person{i}_keypoints.txt"
+                                keypoints_path = os.path.join(crops_dir, keypoints_name)
+                                
+                                keypoints = person[5]
+                                keypoint_conf = person[6] if len(person) > 6 else None
+                                
+                                with open(keypoints_path, 'w') as f:
+                                    f.write("# COCO 17 keypoints format\n")
+                                    f.write("# 0:nose 1:left_eye 2:right_eye 3:left_ear 4:right_ear\n")
+                                    f.write("# 5:left_shoulder 6:right_shoulder 7:left_elbow 8:right_elbow\n")
+                                    f.write("# 9:left_wrist 10:right_wrist 11:left_hip 12:right_hip\n")
+                                    f.write("# 13:left_knee 14:right_knee 15:left_ankle 16:right_ankle\n")
+                                    f.write("# Format: x y confidence\n")
+                                    
+                                    for j, (x, y) in enumerate(keypoints):
+                                        conf = keypoint_conf[j] if keypoint_conf is not None else 1.0
+                                        f.write(f"{x:.2f} {y:.2f} {conf:.3f}\n")
                 
                 pbar.update(1)
         
@@ -206,7 +250,6 @@ def process_all_frame_folders(frames_base_dir, output_base_dir, model='yolo11n.p
 
     frames_path = Path(frames_base_dir)
     
-    # Check if we have person folders or direct video folders
     first_level_folders = [f for f in frames_path.iterdir() if f.is_dir()]
     
     if not first_level_folders:
@@ -262,16 +305,17 @@ def process_all_frame_folders(frames_base_dir, output_base_dir, model='yolo11n.p
 
 
 if __name__ == "__main__":
-    # Example usage
+
     frames_dir = "../data/frames"
     output_dir = "../data/detected_persons"
     
-    # YOLO detection
-    model = 'yolo11n.pt'  # Options: yolo11n, yolo11s, yolo11m, yolo11l, yolo11x
+    
+    model = 'yolo11n-pose.pt' 
+    
     conf = 0.5
     device = 'cpu'  # Use 'cuda' or '0' for GPU
     
-    # Process all frame folders
+
     process_all_frame_folders(
         frames_dir, 
         output_dir, 

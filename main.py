@@ -93,14 +93,26 @@ def main():
         return
     
     print("\n" + "="*60)
-    print("STEP 2: Person Detection (YOLOv11)")
+    print("STEP 2: Person Detection + Pose Estimation (YOLOv11)")
     print("="*60)
     
     # Check if frames exist
     frames = list(Path(frames_dir).glob('**/*.*'))
     if frames:
-        # YOLO detection configuration
-        detection_model = 'yolo11n-pose.pt'  # Options: yolo11n, yolo11s, yolo11m, yolo11l, yolo11x
+
+        detection_model = 'yolo11n-pose.pt'  # Nano + pose (fastest)
+        # detection_model = 'yolo11s-pose.pt'  # Small + pose (balanced)
+        # detection_model = 'yolo11m-pose.pt'  # Medium + pose (good quality)
+        # detection_model = 'yolo11l-pose.pt'  # Large + pose (high quality)
+        # detection_model = 'yolo11x-pose.pt'  # Extra large + pose (best)
+        
+        # Regular detection models (faster, no pose keypoints):
+        # detection_model = 'yolo11n.pt'       # Nano (fastest)
+        # detection_model = 'yolo11s.pt'       # Small
+        # detection_model = 'yolo11m.pt'       # Medium
+        # detection_model = 'yolo11l.pt'       # Large
+        # detection_model = 'yolo11x.pt'       # Extra large
+        
         detection_conf = 0.5
         device = 'cpu'  # Use 'cuda' or '0' for GPU acceleration
         save_bbox_images = True  # Save visualization with bounding boxes
@@ -165,8 +177,9 @@ def main():
     print(f"\nResults saved to:")
     print(f"  - Frames: {frames_dir}")
     print(f"  - Detected Persons: {detected_persons_dir}")
-    print(f"    • Bounding box visualizations: {detected_persons_dir}/**/bbox_visualizations/")
+    print(f"    • Pose visualizations: {detected_persons_dir}/**/bbox_visualizations/")
     print(f"    • Cropped persons: {detected_persons_dir}/**/person_crops/")
+    print(f"    • Pose keypoints: {detected_persons_dir}/**/person_crops/*_keypoints.txt")
     print(f"  - Silhouettes: {silhouettes_dir}")
 
 
