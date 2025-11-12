@@ -20,20 +20,6 @@ except ImportError:
 class SilhouetteExtractor:
 
     def __init__(self, method='yolo', model='yolo11n-seg.pt', conf=0.25, device='cpu'):
-        """
-        Initialize silhouette extractor
-        
-        Args:
-            method (str): Extraction method ('yolo', 'mog2', 'knn')
-            model (str): YOLO model name (for yolo method)
-                        - yolo11n-seg.pt (nano, fastest)
-                        - yolo11s-seg.pt (small)
-                        - yolo11m-seg.pt (medium)
-                        - yolo11l-seg.pt (large)
-                        - yolo11x-seg.pt (extra large, most accurate)
-            conf (float): Confidence threshold for YOLO detection
-            device (str): Device to run on ('cpu', 'cuda', '0', '1', etc.)
-        """
         self.method = method
         self.conf = conf
         self.device = device
@@ -215,21 +201,7 @@ class SilhouetteExtractor:
 
 
 def process_all_frame_folders(frames_base_dir, output_base_dir, method='yolo', model='yolo11n-seg.pt', conf=0.25, device='cpu'):
-    """
-    Process all frame folders to extract silhouettes (supports person folders)
-    
-    Args:
-        frames_base_dir (str): Base directory containing frame subfolders
-        output_base_dir (str): Base directory for output silhouettes
-        method (str): Extraction method ('yolo', 'mog2', 'knn')
-        model (str): YOLO model name (only for yolo method)
-        conf (float): Confidence threshold (only for yolo method)
-        device (str): Device to run on ('cpu', 'cuda', '0', '1', etc.)
-    
-    Structure:
-        frames/person1/video_name/ -> silhouettes/person1/video_name/
-        frames/person2/video_name/ -> silhouettes/person2/video_name/
-    """
+
     
     frames_path = Path(frames_base_dir)
     
