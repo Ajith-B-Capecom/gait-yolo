@@ -17,7 +17,7 @@ class PersonDetector:
         
         print(f"Loading YOLO model: {model}")
         print(f"  Type: {'Pose estimation' if self.is_pose_model else 'Object detection'}")
-        print(f"  Confidence threshold: {conf} (lower = detect more distant persons)")
+        print(f"  Confidence threshold: {conf} ")
         
         try:
             self.yolo = YOLO(model)
@@ -192,7 +192,7 @@ class PersonDetector:
             return 0
         
         print(f"\nDetecting persons in {len(frame_files)} frames")
-        print(f"Confidence threshold: {self.conf} (lower = detect more distant persons)")
+        print(f"Confidence threshold: {self.conf}")
         
         total_persons = 0
         frames_with_persons = 0

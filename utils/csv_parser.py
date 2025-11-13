@@ -2,7 +2,7 @@ import pandas as pd
 from models.keypoints_model import Keypoint, BodyPart, FrameData
 from typing import List, Optional
 
-def parse_keypoints_csv(csv_path: str) -> List[FrameData]:
+def parse_keypoints_csv(csv_path: str, video_name: str = "", person_name: str = "") -> List[FrameData]:
     """
     Parse a person's keypoints CSV file.
     CSV format: Each row = one frame with keypoints for ONE person
@@ -36,6 +36,11 @@ def parse_keypoints_csv(csv_path: str) -> List[FrameData]:
         )
         
         # Each row is a different frame with one person
-        frames.append(FrameData(frame=frame_name, persons=[kp]))
+        frames.append(FrameData(
+            frame=frame_name, 
+            persons=[kp],
+            video_name=video_name,
+            person_name=person_name
+        ))
 
     return frames

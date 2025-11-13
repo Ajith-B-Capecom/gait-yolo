@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from models.keypoints_model import PersonData, VideoData
+from models.keypoints_model import FrameData
 from utils.csv_parser import parse_keypoints_csv
 from utils.db import get_db
 
@@ -20,7 +20,7 @@ class KeypointsService:
             print(f"⚠ Person folder not found: {person_folder}")
             return 0
 
-        videos = []
+        total_frames = 0
         # Look for video folders inside detected_persons
         for video_dir in person_folder.glob("*"):
             if not video_dir.is_dir():
@@ -38,25 +38,28 @@ class KeypointsService:
             if not csv_files:
                 continue
             
-            frames = []
             for csv_file in csv_files:
                 try:
                     # parse_keypoints_csv returns a list of FrameData
-                    frame_data_list = parse_keypoints_csv(str(csv_file))
-                    frames.extend(frame_data_list)
+                    frame_data_list = parse_keypoints_csv(
+                        str(csv_file), 
+                        video_name=video_name, 
+                        person_name=person_name
+                    )
+                    
+                    # Insert each frame into MongoDB
+                    for frame_data in frame_data_list:
+                        self.collection.insert_one(frame_data.model_dump())
+                    
+                    total_frames += len(frame_data_list)
+                    print(f"  ✓ Loaded {len(frame_data_list)} frames from {video_name}/{csv_file.name}")
                 except Exception as e:
                     print(f"  ⚠ Error parsing {csv_file.name}: {e}")
                     continue
 
-            if frames:
-                videos.append(VideoData(video_name=video_name, frames=frames))
-                print(f"  ✓ Loaded {len(frames)} frames from {video_name}")
-
-        if not videos:
+        if total_frames == 0:
             print(f"⚠ No video keypoint data found for {person_name}")
             return 0
 
-        person_data = PersonData(person_name=person_name, videos=videos)
-        self.collection.insert_one(person_data.model_dump())
-        print(f"✓ Saved data for {person_name} ({len(videos)} videos)")
-        return len(videos)
+        print(f"✓ Saved {total_frames} frames for {person_name}")
+        return total_frames
