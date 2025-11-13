@@ -1,10 +1,10 @@
-
 import cv2
 import os
 from pathlib import Path
 from tqdm import tqdm
 import numpy as np
 from ultralytics import YOLO
+import csv
 
 
 class PersonDetector:
@@ -84,26 +84,34 @@ class PersonDetector:
         
         # COCO pose skeleton connections
         pose_connections = [
-            (0, 1), (0, 2), (1, 3), (2, 4),  # Head connections
-            (5, 6), (5, 7), (7, 9), (6, 8), (8, 10),  # Arms
-            (5, 11), (6, 12), (11, 12),  # Torso
-            (11, 13), (13, 15), (12, 14), (14, 16)  # Legs
+            (0, 1), (0, 2), (1, 3), (2, 4),      # 0-3: Head connections
+            (5, 6), (5, 11), (6, 12), (11, 12),  # 4-7: Torso connections
+            (5, 7), (7, 9),                      # 8-9: Left Arm
+            (6, 8), (8, 10),                     # 10-11: Right Arm
+            (11, 13), (13, 15),                  # 12-13: Left Leg
+            (12, 14), (14, 16)                   # 14-15: Right Leg
         ]
-        
-        # Colors for different body parts
         colors = {
-            "head": (0, 255, 255),    # Yellow
-            "arms": (255, 0, 255),    # Magenta
-            "torso": (0, 255, 0),     # Green
-            "legs": (255, 0, 0)       # Blue
+            "bright_green": (0, 255, 0),   # 🟢 Bounding Box default
+            "orange":       (0, 165, 255),  # 🟠 Bounding Box for closest person (person 0)
+            "red_kp":       (0, 0, 255),    # 🔴 Keypoint color
+            "white_kp_out": (255, 255, 255),# ⚪ Keypoint outline color
+            "yellow_head":  (0, 255, 255),  # 💛 Head (Nose, Eyes, Ears)
+            "green_torso":  (0, 255, 0),    # 💚 Torso (Shoulders, Hips, Middle)
+            "magenta_l_arm": (255, 0, 255), # 💜 Left Arm
+            "blue_r_arm":   (255, 0, 0),    # 🔵 Right Arm
+            "pink_l_leg":   (255, 0, 128),  # 💗 Left Leg (Using a slightly different pink/purple)
+            "cyan_r_leg":   (255, 255, 0),  # 🔵 Light blue/Cyan Right Leg
         }
         
         # Assign colors to each connection
         connection_colors = (
-            [colors["head"]] * 4 +
-            [colors["arms"]] * 5 +
-            [colors["torso"]] * 3 +
-            [colors["legs"]] * 4
+            [colors["yellow_head"]] * 4 + 
+            [colors["green_torso"]] * 4 + 
+            [colors["magenta_l_arm"]] * 2 +
+            [colors["blue_r_arm"]] * 2 +
+            [colors["pink_l_leg"]] * 2 +
+            [colors["cyan_r_leg"]] * 2
         )
         
         # Draw each detected person
@@ -111,15 +119,18 @@ class PersonDetector:
             x1, y1, x2, y2, conf = person[:5]
             
             # Draw bounding box (green for all persons)
-            cv2.rectangle(frame_copy, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            # Closest person (index 0) is Orange, others are Bright Green
+            box_color = colors["orange"] if person_idx == 0 else colors["bright_green"]
+            cv2.rectangle(frame_copy, (x1, y1), (x2, y2), box_color, 2)
             
             # Draw person label with ID
             label = f"Person{person_idx} {conf:.2f}"
             if self.is_pose_model:
                 label = f"Person{person_idx}+Pose {conf:.2f}"
-            
+                
+            # Label color matches box color
             cv2.putText(frame_copy, label, (x1, y1 - 10),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, box_color, 2)
             
             # Draw pose keypoints if available
             if self.is_pose_model and len(person) > 5:
@@ -127,11 +138,6 @@ class PersonDetector:
                 keypoint_conf = person[6] if len(person) > 6 else None
                 
                 if keypoints is not None:
-                    # Draw keypoints as red circles
-                    for i, (x, y) in enumerate(keypoints):
-                        if keypoint_conf is None or keypoint_conf[i] > 0.5:
-                            cv2.circle(frame_copy, (int(x), int(y)), 3, (0, 0, 255), -1)
-                    
                     # Draw skeleton connections with colors
                     for idx, connection in enumerate(pose_connections):
                         pt1_idx, pt2_idx = connection
@@ -141,17 +147,25 @@ class PersonDetector:
                             color = connection_colors[idx]
                             
                             # Only draw if both keypoints are confident
+                            draw_line = True
                             if keypoint_conf is not None:
-                                if keypoint_conf[pt1_idx] > 0.5 and keypoint_conf[pt2_idx] > 0.5:
-                                    cv2.line(frame_copy, (int(pt1[0]), int(pt1[1])),
-                                           (int(pt2[0]), int(pt2[1])), color, 2)
-                            else:
+                                if keypoint_conf[pt1_idx] <= 0.5 or keypoint_conf[pt2_idx] <= 0.5:
+                                    draw_line = False
+                            
+                            if draw_line:
                                 cv2.line(frame_copy, (int(pt1[0]), int(pt1[1])),
-                                       (int(pt2[0]), int(pt2[1])), color, 2)
+                                         (int(pt2[0]), int(pt2[1])), color, 2)
+
+                    # Draw keypoints as red circles with white outlines
+                    for i, (x, y) in enumerate(keypoints):
+                        if keypoint_conf is None or keypoint_conf[i] > 0.5:
+                            # White outline (thicker circle)
+                            cv2.circle(frame_copy, (int(x), int(y)), 4, colors["white_kp_out"], -1)
+                            # Red center
+                            cv2.circle(frame_copy, (int(x), int(y)), 2, colors["red_kp"], -1)
         
         return frame_copy
     
-
     
     def process_folder(self, input_dir, output_dir, save_bbox_images=True, save_crops=True):
         # Create output directories
@@ -249,12 +263,11 @@ class PersonDetector:
         print(f"  Average persons per frame: {total_persons/len(frame_files):.2f}")
         print(f"  Output saved to: {output_dir}")
         if self.is_pose_model and all_keypoints_data:
-            print(f"  Keypoints saved as: {len(all_keypoints_data)} person CSV files")
+            print(f"  Keypoints saved as: {len(all_keypoints_data)} person CSV files (Wide Format)")
         
         return total_persons
     
     def _create_person_keypoints_csv(self, crops_dir, all_keypoints_data):
-        import csv
         
         # COCO 17 keypoint names
         keypoint_names = [
@@ -264,39 +277,45 @@ class PersonDetector:
             'left_knee', 'right_knee', 'left_ankle', 'right_ankle'
         ]
         
-        # Create one CSV file per person
+        # Create one WIDE FORMAT CSV file per person
         for person_id, frames_data in all_keypoints_data.items():
             csv_path = os.path.join(crops_dir, f"{person_id}_keypoints.csv")
             
             with open(csv_path, 'w', newline='', encoding='utf-8') as csvfile:
                 writer = csv.writer(csvfile)
                 
-                # Create header: frame, keypoint_name, x, y, confidence, visible
-                header = ['frame', 'keypoint_id', 'keypoint_name', 'x', 'y', 'confidence', 'visible']
+                # --- WIDE FORMAT HEADER CREATION ---
+                # Header will be: frame, x_nose, y_nose, conf_nose, x_left_eye, y_left_eye, conf_left_eye, ...
+                header = ['frame']
+                for name in keypoint_names:
+                    header.append(f'x_{name}')
+                    header.append(f'y_{name}')
+                    header.append(f'conf_{name}')
+                
                 writer.writerow(header)
+                # -----------------------------------
                 
                 # Write data for each frame
                 for frame_data in frames_data:
                     frame_name = frame_data['frame_name']
-                    keypoints = frame_data['keypoints']
-                    keypoint_conf = frame_data['confidence']
+                    keypoints = frame_data['keypoints']  # N x 2 array of (x, y)
+                    keypoint_conf = frame_data['confidence']  # N array of confidence
                     
-                    # Write each keypoint as a row
+                    row = [frame_name]
+                    
+                    # --- WIDE FORMAT ROW DATA CREATION ---
                     for i, (x, y) in enumerate(keypoints):
                         conf = keypoint_conf[i] if keypoint_conf is not None else 1.0
-                        visible = 'yes' if conf > 0.5 else 'no'
                         
-                        writer.writerow([
-                            frame_name,             # frame
-                            i,                      # keypoint_id
-                            keypoint_names[i],      # keypoint_name
-                            f"{x:.2f}",            # x coordinate
-                            f"{y:.2f}",            # y coordinate
-                            f"{conf:.3f}",         # confidence
-                            visible                 # visible (yes/no)
-                        ])
+                        # Append x, y, and confidence for the keypoint
+                        row.append(f"{x:.2f}")
+                        row.append(f"{y:.2f}")
+                        row.append(f"{conf:.3f}")
+                    
+                    writer.writerow(row)
+                    # -------------------------------------
             
-            print(f"  {person_id} keypoints: {csv_path} ({len(frames_data)} frames)")
+            print(f"  {person_id} keypoints (Wide Format): {csv_path} ({len(frames_data)} frames)")
 
 
 def process_all_frame_folders(frames_base_dir, output_base_dir, model='yolo11n.pt', conf=0.3, device='cpu', save_bbox_images=True, save_crops=True):
@@ -376,5 +395,5 @@ if __name__ == "__main__":
         conf=conf, 
         device=device,
         save_bbox_images=True,  # Save visualization images
-        save_crops=True         # Save cropped person images
+        save_crops=True         # Save cropped person images and keypoint CSVs
     )
