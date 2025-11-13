@@ -5,9 +5,10 @@ import sys
 from pathlib import Path
 from threading import Thread
 import time
-
+from services.keypoint_service import KeypointsService
+from config import config
 app = FastAPI()
-
+service = KeypointsService()
 # --- Configuration for relative imports ---
 # This inserts the directory containing the current script (app.py) 
 # followed by the 'scripts' subdirectory into the Python path.
@@ -19,14 +20,13 @@ if scripts_dir not in sys.path:
     sys.path.insert(0, scripts_dir)
 # -----------------------------------------
 
+
 # Import the core modules after path setup
 try:
-    # Assuming 'scripts' contains these files
-    from video_to_frames import process_all_videos
-    from detect_person import process_all_frame_folders as detect_persons_in_folders
-    from silhouette_extraction import SilhouetteExtractor
+    from scripts.video_to_frames import process_all_videos
+    from scripts.detect_person import process_all_frame_folders as detect_persons_in_folders
+    from scripts.silhouette_extraction import SilhouetteExtractor, process_all_frame_folders as extract_silhouettes_from_folders
 except ImportError as e:
-    # If modules are not found, print a clear error message
     print(f"CRITICAL ERROR: Could not import required scripts: {e}")
     print("Ensure 'video_to_frames.py', 'detect_person.py', and 'silhouette_extraction.py' are in a 'scripts' subdirectory.")
     
@@ -55,111 +55,170 @@ async def start_pipeline():
 
 # --- Core Processing Logic ---
 
-def setup_directories():
-    """Create necessary directories"""
-    # ... (setup_directories function remains the same) ...
+def setup_directories_for_person(person_name):
+    """Create necessary directories for a person"""
+    # New structure: videos/person1/ and data/person1/frames/, etc.
+    person_video_dir = Path(config.VIDEOS_DIR) / person_name
+    person_data_dir = Path(config.DATA_DIR) / person_name
+    
     directories = [
-        'data/videos',
-        'data/frames',
-        'data/detected_persons',
-        'data/silhouettes',
-        'output'
+        person_video_dir,
+        person_data_dir / 'frames',
+        person_data_dir / 'detected_persons',
+        person_data_dir / 'silhouettes'
     ]
     
     for dir_path in directories:
-        Path(dir_path).mkdir(parents=True, exist_ok=True)
+        dir_path.mkdir(parents=True, exist_ok=True)
     
-    print("✓ Directories created/verified")
+    print(f"✓ Directories created/verified for {person_name}")
 
 
 def main():
+    """Main processing pipeline with new folder structure"""
     
-    # Define paths
-    video_dir = 'data/videos'
-    frames_dir = 'data/frames'
-    detected_persons_dir = 'data/detected_persons'
-    silhouettes_dir = 'data/silhouettes'
-
-    setup_directories()
+    print("\n" + "="*70)
+    print("  OpenGait Processing Pipeline")
+    print("="*70)
+    print(f"\nFolder Structure:")
+    print(f"  Videos: {config.VIDEOS_DIR}/person1/, person2/, ...")
+    print(f"  Output: {config.DATA_DIR}/person1/, person2/, ...")
     
-    # Check if videos exist
-    video_dir_path = Path(video_dir)
-    # Check for person folders (nested structure)
-    person_folders = [f for f in video_dir_path.iterdir() if f.is_dir()]
+    # Get all persons from videos folder
+    video_dir_path = Path(config.VIDEOS_DIR)
     
-    # Check for videos in person folders or directly
-    video_extensions = ['.mp4', '.avi', '.mov', '.flv', '.mkv']
-    has_videos = False
+    if not video_dir_path.exists():
+        print(f"\n✗ Videos directory not found: {config.VIDEOS_DIR}/")
+        print(f"  Creating directory...")
+        video_dir_path.mkdir(parents=True, exist_ok=True)
+        print(f"\n  Please add videos to: {config.VIDEOS_DIR}/person1/, person2/, etc.")
+        return
     
-    if person_folders:
-        for person_folder in person_folders:
-            videos_in_folder = [f for f in person_folder.iterdir() 
-                              if f.suffix.lower() in video_extensions]
-            if videos_in_folder:
-                has_videos = True
-                break
-    else:
-        direct_videos = [f for f in video_dir_path.glob('*.*') 
-                         if f.suffix.lower() in video_extensions]
-        has_videos = len(direct_videos) > 0
+    # Find all person folders
+    person_folders = [f for f in video_dir_path.iterdir() if f.is_dir() and f.name.startswith('person')]
     
-    if has_videos:
-        frame_interval = 1 
-        process_all_videos(video_dir, frames_dir, frame_interval)
-    else:
-        print(f"⚠ No video files found in {video_dir}. Pipeline stopped.")
-        # Removed return here to allow continued execution if frames already exist
+    if not person_folders:
+        print(f"\n✗ No person folders found in {config.VIDEOS_DIR}/")
+        print(f"\nExpected structure:")
+        print(f"  {config.VIDEOS_DIR}/person1/video.mp4")
+        print(f"  {config.VIDEOS_DIR}/person2/video.mp4")
+        return
     
-    # Check if frames exist
-    frames = list(Path(frames_dir).glob('**/*.*'))
-    if frames:
-        detection_model = 'yolo11n-pose.pt' 
-        detection_conf = 0.3 
-        device = 'cpu' 
-        save_bbox_images = True 
-        save_crops = True 
+    print(f"\nFound {len(person_folders)} person(s): {[f.name for f in person_folders]}")
+    
+    # Process each person
+    for person_folder in person_folders:
+        person_name = person_folder.name
         
-        detect_persons_in_folders(
-            frames_dir, 
-            detected_persons_dir, 
-            model=detection_model, 
-            conf=detection_conf, 
-            device=device,
-            save_bbox_images=save_bbox_images,
-            save_crops=save_crops
+        print("\n" + "="*70)
+        print(f"  Processing: {person_name.upper()}")
+        print("="*70)
+        
+        # Setup directories for this person
+        setup_directories_for_person(person_name)
+        
+        # Define paths for this person
+        person_video_dir = Path(config.VIDEOS_DIR) / person_name
+        person_data_dir = Path(config.DATA_DIR) / person_name
+        person_frames_dir = person_data_dir / 'frames'
+        person_detected_dir = person_data_dir / 'detected_persons'
+        person_silhouettes_dir = person_data_dir / 'silhouettes'
+        
+        # Check for videos
+        video_extensions = ['.mp4', '.avi', '.mov', '.flv', '.mkv']
+        videos = [f for f in person_video_dir.glob('*.*') if f.suffix.lower() in video_extensions]
+        
+        if not videos:
+            print(f"⚠ No videos found for {person_name}")
+            continue
+        
+        print(f"\nFound {len(videos)} video(s) for {person_name}")
+        
+        # STEP 1: Extract frames
+        print("\n" + "-"*70)
+        print("STEP 1: Video to Frames Extraction")
+        print("-"*70)
+        
+        process_all_videos(
+            str(person_video_dir),
+            str(person_frames_dir),
+            config.FRAME_INTERVAL
         )
-    else:
-        print(f"⚠ No frame files found in {frames_dir}. Skipping detection.")
-    
-    # Check if detected persons exist
-    detected_crops_dir = Path(detected_persons_dir)
-    crop_folders = list(detected_crops_dir.glob('**/person_crops'))
-    
-    if crop_folders:
-        # Configuration
-        method = 'yolo'
-        silhouette_model = 'yolo11n-seg.pt' 
-        silhouette_conf = 0.25
         
-        # Process each person's crops folder
-        for crop_folder in crop_folders:
-            relative_path = crop_folder.relative_to(detected_crops_dir)
-            output_path = Path(silhouettes_dir) / relative_path.parent
-            
-            print(f"\nProcessing: {relative_path.parent}")
-            
-            # Initialize Extractor for this folder (or initialize once outside the loop 
-            # if the extractor class can handle multiple runs efficiently)
-            if method == 'yolo':
-                extractor = SilhouetteExtractor(method=method, model=silhouette_model, conf=silhouette_conf, device=device)
+        # STEP 2: Detect persons
+        print("\n" + "-"*70)
+        print("STEP 2: Person Detection + Pose Estimation")
+        print("-"*70)
+        
+        frames = list(person_frames_dir.glob('**/*.jpg'))
+        if frames:
+            detect_persons_in_folders(
+                str(person_frames_dir),
+                str(person_detected_dir),
+                model=config.YOLO_DETECTION_MODEL,
+                conf=config.DETECTION_CONFIDENCE,
+                device=config.DEVICE,
+                save_bbox_images=config.SAVE_BBOX_IMAGES,
+                save_crops=config.SAVE_CROPS
+            )
+        else:
+            print(f"⚠ No frames found for {person_name}")
+            continue
+        
+        try:
+            total_saved = service.save_person_videos(person_name, str(person_detected_dir))
+            if total_saved > 0:
+                print(f"✓ Saved {total_saved} video(s) keypoint records to MongoDB for {person_name}")
             else:
-                extractor = SilhouetteExtractor(method=method)
-            
-            extractor.extract_silhouettes_from_folder(str(crop_folder), str(output_path))
-    else:
-        print(f"⚠ No detected person crops found in {detected_persons_dir}. Skipping silhouette extraction.")
+                print(f"⚠ No keypoint data found for {person_name}")
+        except Exception as e:
+            print(f"⚠ MongoDB save failed: {e}")
+            print("  Keypoints are still available in CSV files")
         
-    # ... (summary print statements remain the same) ...
+        # STEP 3: Extract silhouettes
+        print("\n" + "-"*70)
+        print("STEP 3: Silhouette Extraction")
+        print("-"*70)
+        
+        crop_folders = list(person_detected_dir.glob('**/person_crops'))
+        
+        if crop_folders:
+            for crop_folder in crop_folders:
+                relative_path = crop_folder.relative_to(person_detected_dir)
+                output_path = person_silhouettes_dir / relative_path.parent
+                
+                print(f"\nProcessing: {relative_path.parent}")
+                
+                if config.SILHOUETTE_METHOD == 'yolo':
+                    extractor = SilhouetteExtractor(
+                        method='yolo',
+                        model=config.YOLO_SEGMENTATION_MODEL,
+                        conf=config.SEGMENTATION_CONFIDENCE,
+                        device=config.DEVICE
+                    )
+                else:
+                    extractor = SilhouetteExtractor(method=config.SILHOUETTE_METHOD)
+                
+                extractor.extract_silhouettes_from_folder(str(crop_folder), str(output_path))
+        else:
+            print(f"⚠ No detected person crops found for {person_name}")
+        
+        # STEP 4: Save keypoints to MongoDB
+        print("\n" + "-"*70)
+        print("STEP 4: Saving Keypoints to MongoDB")
+        print("-"*70)
+        
+        # try:
+        #     total_saved = service.save_person_videos(person_name, str(person_detected_dir))
+        #     if total_saved > 0:
+        #         print(f"✓ Saved {total_saved} video(s) keypoint records to MongoDB for {person_name}")
+        #     else:
+        #         print(f"⚠ No keypoint data found for {person_name}")
+        # except Exception as e:
+        #     print(f"⚠ MongoDB save failed: {e}")
+        #     print("  Keypoints are still available in CSV files")
+    
+    
 
 
 if __name__ == "__main__":
