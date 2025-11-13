@@ -105,15 +105,10 @@ def main():
         # detection_model = 'yolo11m-pose.pt'  # Medium + pose (good quality)
         # detection_model = 'yolo11l-pose.pt'  # Large + pose (high quality)
         # detection_model = 'yolo11x-pose.pt'  # Extra large + pose (best)
+
         
-        # Regular detection models (faster, no pose keypoints):
-        # detection_model = 'yolo11n.pt'       # Nano (fastest)
-        # detection_model = 'yolo11s.pt'       # Small
-        # detection_model = 'yolo11m.pt'       # Medium
-        # detection_model = 'yolo11l.pt'       # Large
-        # detection_model = 'yolo11x.pt'       # Extra large
-        
-        detection_conf = 0.5
+        # Detection settings
+        detection_conf = 0.3  # Lower confidence to detect distant persons (0.1-0.9)
         device = 'cpu'  # Use 'cuda' or '0' for GPU acceleration
         save_bbox_images = True  # Save visualization with bounding boxes
         save_crops = True  # Save cropped person images
