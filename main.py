@@ -6,30 +6,20 @@ from pathlib import Path
 from threading import Thread
 import time
 from services.keypoint_service import KeypointsService
+from scripts.video_to_frames import process_all_videos
+from scripts.detect_person import process_all_frame_folders as detect_persons_in_folders
+from scripts.silhouette_extraction import SilhouetteExtractor, process_all_frame_folders as extract_silhouettes_from_folders
 from config import config
 app = FastAPI()
 service = KeypointsService()
-# --- Configuration for relative imports ---
-# This inserts the directory containing the current script (app.py) 
-# followed by the 'scripts' subdirectory into the Python path.
+
 base_dir = os.path.dirname(os.path.abspath(__file__))
 if base_dir not in sys.path:
     sys.path.insert(0, base_dir)
 scripts_dir = os.path.join(base_dir, 'scripts')
 if scripts_dir not in sys.path:
     sys.path.insert(0, scripts_dir)
-# -----------------------------------------
 
-
-# Import the core modules after path setup
-try:
-    from scripts.video_to_frames import process_all_videos
-    from scripts.detect_person import process_all_frame_folders as detect_persons_in_folders
-    from scripts.silhouette_extraction import SilhouetteExtractor, process_all_frame_folders as extract_silhouettes_from_folders
-except ImportError as e:
-    print(f"CRITICAL ERROR: Could not import required scripts: {e}")
-    print("Ensure 'video_to_frames.py', 'detect_person.py', and 'silhouette_extraction.py' are in a 'scripts' subdirectory.")
-    
 # --- FastAPI Endpoints ---
 
 @app.get("/")
@@ -75,15 +65,7 @@ def setup_directories_for_person(person_name):
 
 
 def main():
-    """Main processing pipeline with new folder structure"""
-    
-    print("\n" + "="*70)
-    print("  OpenGait Processing Pipeline")
-    print("="*70)
-    print(f"\nFolder Structure:")
-    print(f"  Videos: {config.VIDEOS_DIR}/person1/, person2/, ...")
-    print(f"  Output: {config.DATA_DIR}/person1/, person2/, ...")
-    
+
     # Get all persons from videos folder
     video_dir_path = Path(config.VIDEOS_DIR)
     
@@ -173,7 +155,6 @@ def main():
                 print(f"⚠ No keypoint data found for {person_name}")
         except Exception as e:
             print(f"⚠ MongoDB save failed: {e}")
-            print("  Keypoints are still available in CSV files")
         
         # STEP 3: Extract silhouettes
         print("\n" + "-"*70)
@@ -202,24 +183,6 @@ def main():
                 extractor.extract_silhouettes_from_folder(str(crop_folder), str(output_path))
         else:
             print(f"⚠ No detected person crops found for {person_name}")
-        
-        # STEP 4: Save keypoints to MongoDB
-        print("\n" + "-"*70)
-        print("STEP 4: Saving Keypoints to MongoDB")
-        print("-"*70)
-        
-        # try:
-        #     total_saved = service.save_person_videos(person_name, str(person_detected_dir))
-        #     if total_saved > 0:
-        #         print(f"✓ Saved {total_saved} video(s) keypoint records to MongoDB for {person_name}")
-        #     else:
-        #         print(f"⚠ No keypoint data found for {person_name}")
-        # except Exception as e:
-        #     print(f"⚠ MongoDB save failed: {e}")
-        #     print("  Keypoints are still available in CSV files")
-    
-    
-
 
 if __name__ == "__main__":
     print("Server initialized. Run using 'uvicorn your_file_name:app --reload'")
