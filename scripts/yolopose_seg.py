@@ -21,18 +21,7 @@ def create_output_folders(base_folder='data'):
     return folders
 
 def extract_silhouette(frame, seg_model, conf_threshold=0.5, apply_morphology=True):
-    """
-    Extract person silhouette using YOLOv11-seg segmentation model.
-    
-    Args:
-        frame: Input frame
-        seg_model: YOLOv11 segmentation model
-        conf_threshold: Confidence threshold
-        apply_morphology: Apply morphological operations to clean silhouette
-    
-    Returns:
-        Silhouette mask (white person on black background)
-    """
+
     # Run segmentation
     results = seg_model(frame, verbose=False, conf=conf_threshold)
     

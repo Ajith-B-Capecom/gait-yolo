@@ -15,7 +15,8 @@ CONF_THRESHOLD = 0.5
 LINE_THICKNESS = 4
 EXTRACTION_MODE = "both"
 APPLY_MORPHOLOGY = True
-
+    # Options: 'botsort.yaml' (best accuracy) or 'bytetrack.yaml' (fastest)
+TRACKER_TYPE = 'botsort.yaml'
 
 @app.get("/")
 async def run_processing():
@@ -30,6 +31,7 @@ async def run_processing():
             extraction_mode=EXTRACTION_MODE,
             output_folder=OUTPUT_FOLDER,
             apply_morphology=APPLY_MORPHOLOGY,
+            tracker_type=TRACKER_TYPE
         )
 
         return JSONResponse({"status": "success", "message": "Processing completed."})
