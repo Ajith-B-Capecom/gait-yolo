@@ -10,13 +10,13 @@ OUTPUT_FOLDER = "data"
 POSE_MODEL_PATH = "yolo11n-pose.pt"
 SEG_MODEL_PATH = "yolo11n-seg.pt"
 
-SKIP_FRAMES = 0
+SKIP_FRAMES = 3
 CONF_THRESHOLD = 0.5
-LINE_THICKNESS = 4
+LINE_THICKNESS = 3
 EXTRACTION_MODE = "both"
 APPLY_MORPHOLOGY = True
     # Options: 'botsort.yaml' (best accuracy) or 'bytetrack.yaml' (fastest)
-TRACKER_TYPE = 'botsort.yaml'
+TRACKER_TYPE = 'trackers/deepsort.yaml'
 
 @app.get("/")
 async def run_processing():

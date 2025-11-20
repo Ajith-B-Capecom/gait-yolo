@@ -1,0 +1,27 @@
+# DeepSORT Tracker Configuration
+
+max_dist: 0.2              # Cosine distance threshold for appearance matching
+max_iou_distance: 0.7      # IoU threshold for matching
+max_age: 30                # Frames to keep lost tracks before removing
+n_init: 3                  # Frames required to confirm a track
+nn_budget: 100             # Max size of appearance embedding gallery
+
+# Re-identification model
+model_type: osnet_x0_25    # Options: osnet_x0_25, osnet_x0_5, osnet_x1_0
+model_path: models/osnet_x0_25_msmt17.pt
+
+# DeepSORT feature extractor
+use_cuda: true             # Use GPU (recommended)
+embedder: torch           # Feature extractor type
+embedder_gpu: 0           # Which GPU to use
+half: false               # Use FP16 for faster inference (optional)
+
+# Tracking behaviour
+min_confidence: 0.3        # Minimum detection confidence for tracking
+nms_max_overlap: 1.0       # NMS threshold
+motion: true               # Enable motion model (Kalman Filter)
+appearance: true           # Enable appearance embedding (ReID)
+
+# Optional visualization settings
+draw_trails: true
+trail_length: 20
