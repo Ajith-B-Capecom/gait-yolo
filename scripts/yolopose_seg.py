@@ -92,7 +92,7 @@ def draw_skeleton(frame, keypoints, confidence_threshold=0.5, line_thickness=3,
     
     return annotated
 
-def get_person_bbox(keypoints, confidence_threshold=0.5, padding=60):
+def get_person_bbox(keypoints, confidence_threshold=0.5, padding=50):
     valid_points = keypoints[keypoints[:, 2] > confidence_threshold]
     
     if len(valid_points) < 3:
@@ -199,7 +199,10 @@ def process_single_video(video_path, pose_model, seg_model, output_folders,
                 continue
             
             # Perform pose detection WITH TRACKING
-            # persist=True maintains IDs across frames
+            # persist=True maintains IDs across frames0000000000000
+            if tracker_type == "deepsort" :
+                #call that function
+            
             results = pose_model.track(
                 frame, 
                 persist=True,
@@ -393,7 +396,6 @@ def main():
     POSE_MODEL_PATH = 'yolo11n-pose.pt'
     SEG_MODEL_PATH = 'yolo11n-seg.pt'
     
-    # TRACKING SETTINGS
     # Options: 'botsort.yaml' (best accuracy) or 'bytetrack.yaml' (fastest)
     TRACKER_TYPE = 'botsort.yaml'
     

@@ -15,8 +15,7 @@ CONF_THRESHOLD = 0.5
 LINE_THICKNESS = 3
 EXTRACTION_MODE = "both"
 APPLY_MORPHOLOGY = True
-    # Options: 'botsort.yaml' (best accuracy) or 'bytetrack.yaml' (fastest)
-TRACKER_TYPE = 'trackers/deepsort.yaml'
+TRACKER_TYPE = 'botsort.yaml'
 
 @app.get("/")
 async def run_processing():
