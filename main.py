@@ -12,10 +12,10 @@ SEG_MODEL_PATH = "yolo11n-seg.pt"
 
 SKIP_FRAMES = 3
 CONF_THRESHOLD = 0.5
-LINE_THICKNESS = 3
-EXTRACTION_MODE = "both"
+LINE_THICKNESS = 2
+EXTRACTION_MODE = "skeleton"
 APPLY_MORPHOLOGY = True
-TRACKER_TYPE = 'botsort.yaml'
+TRACKER_TYPE = 'bytetrack.yaml'
 
 @app.get("/")
 async def run_processing():

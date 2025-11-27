@@ -6,8 +6,8 @@ import numpy as np
 from ultralytics import YOLO
 import csv
 
+
 def create_output_folders(base_folder='data'):
-    """Create necessary output folders."""
     folders = {
         'cropped': Path(base_folder) / 'cropped_persons',
         'skeleton': Path(base_folder) / 'skeleton_images',
@@ -19,6 +19,7 @@ def create_output_folders(base_folder='data'):
         folder.mkdir(parents=True, exist_ok=True)
     
     return folders
+
 
 def extract_silhouette(frame, seg_model, conf_threshold=0.5, apply_morphology=True):
     results = seg_model(frame, verbose=False, conf=conf_threshold)
@@ -37,6 +38,7 @@ def extract_silhouette(frame, seg_model, conf_threshold=0.5, apply_morphology=Tr
             silhouette = cv2.morphologyEx(silhouette, cv2.MORPH_CLOSE, kernel, iterations=2)
     
     return silhouette
+
 
 def draw_skeleton(frame, keypoints, confidence_threshold=0.5, line_thickness=3, 
                  keypoint_radius=5):
@@ -92,7 +94,9 @@ def draw_skeleton(frame, keypoints, confidence_threshold=0.5, line_thickness=3,
     
     return annotated
 
+
 def get_person_bbox(keypoints, confidence_threshold=0.5, padding=50):
+    """Get bounding box from keypoints"""
     valid_points = keypoints[keypoints[:, 2] > confidence_threshold]
     
     if len(valid_points) < 3:
@@ -107,6 +111,7 @@ def get_person_bbox(keypoints, confidence_threshold=0.5, padding=50):
     y2 = int(y_coords.max() + padding)
     
     return (x1, y1, x2, y2)
+
 
 def create_person_keypoints_csv(output_folder, all_keypoints_data):
     keypoint_names = [
@@ -147,10 +152,13 @@ def create_person_keypoints_csv(output_folder, all_keypoints_data):
         
         print(f"  Created: {person_id}_keypoints.csv ({len(frames_data)} frames)")
 
+
+
 def process_single_video(video_path, pose_model, seg_model, output_folders, 
                         skip_frames=0, conf_threshold=0.5, line_thickness=3,
                         extraction_mode='both', apply_morphology=True, 
-                        tracker_type='botsort.yaml'):
+                        tracker_type='bytetrack.yaml'):
+    
     cap = cv2.VideoCapture(video_path)
     
     if not cap.isOpened():
@@ -168,6 +176,7 @@ def process_single_video(video_path, pose_model, seg_model, output_folders,
     print(f"Video info: {width}x{height} @ {fps}fps, {total_frames} frames")
     print(f"Tracker: {tracker_type.replace('.yaml', '').upper()}")
     print(f"Extraction mode: {extraction_mode}")
+
     
     # Create window
     window_name = f"Pose Tracking - {Path(video_path).name}"
@@ -175,11 +184,7 @@ def process_single_video(video_path, pose_model, seg_model, output_folders,
     
     # Counters
     saved_count = {'cropped': 0, 'skeleton': 0, 'silhouette': 0}
-    
-    # Store keypoints data for CSV export
     all_keypoints_data = {}
-    
-    # Track unique person IDs
     active_track_ids = set()
     
     # Process frames
@@ -198,11 +203,7 @@ def process_single_video(video_path, pose_model, seg_model, output_folders,
                 pbar.update(1)
                 continue
             
-            # Perform pose detection WITH TRACKING
-            # persist=True maintains IDs across frames0000000000000
-            if tracker_type == "deepsort" :
-                #call that function
-            
+            # Get tracking results based on tracker type
             results = pose_model.track(
                 frame, 
                 persist=True,
@@ -211,7 +212,7 @@ def process_single_video(video_path, pose_model, seg_model, output_folders,
                 verbose=False
             )
             
-            # Draw custom skeleton
+            # Draw skeleton
             annotated_frame = frame.copy()
             
             if results[0].keypoints is not None and len(results[0].keypoints) > 0:
@@ -219,13 +220,12 @@ def process_single_video(video_path, pose_model, seg_model, output_folders,
                 annotated_frame = draw_skeleton(frame, keypoints, conf_threshold, 
                                                line_thickness, 5)
                 
-                # Get tracking IDs (None if no tracking available)
                 track_ids = None
                 if results[0].boxes.id is not None:
                     track_ids = results[0].boxes.id.cpu().numpy().astype(int)
-                
-                # Process each tracked person
+
                 for person_idx, person_kpts in enumerate(keypoints):
+                    
                     bbox = get_person_bbox(person_kpts, conf_threshold)
                     
                     if bbox is not None:
@@ -236,12 +236,10 @@ def process_single_video(video_path, pose_model, seg_model, output_folders,
                         y2 = min(y2, height)
                         
                         if x2 > x1 and y2 > y1:
-                            # Get consistent track ID
                             if track_ids is not None and person_idx < len(track_ids):
                                 track_id = int(track_ids[person_idx])
                             else:
                                 track_id = person_idx
-                            
                             active_track_ids.add(track_id)
                             
                             # Generate consistent person ID
@@ -299,23 +297,19 @@ def process_single_video(video_path, pose_model, seg_model, output_folders,
                                 cv2.imwrite(str(silhouette_path), silhouette_img)
                                 saved_count['silhouette'] += 1
             
-            # Create side-by-side display
-            combined = np.hstack((frame, annotated_frame))
             
-            # Add text labels
-            cv2.putText(combined, "Original", (10, 30), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-            cv2.putText(combined, f"Tracked ({tracker_type.split('.')[0].upper()})", 
+            tracker_label =  tracker_type.split('.')[0].upper()
+            cv2.putText(annotated_frame, f"Tracked ({tracker_label})", 
                        (width + 10, 30), 
                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
             
             # Add tracking info
             status_text = f"Saved: {saved_count['cropped']} | Unique IDs: {len(active_track_ids)}"
-            cv2.putText(combined, status_text, (10, height - 10), 
+            cv2.putText(annotated_frame, status_text, (10, height - 10), 
                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
             
             # Display frame
-            cv2.imshow(window_name, combined)
+            cv2.imshow(window_name, annotated_frame)
             
             # Wait for key press
             key = cv2.waitKey(1) & 0xFF
@@ -342,6 +336,7 @@ def process_single_video(video_path, pose_model, seg_model, output_folders,
           f"{saved_count['silhouette']} silhouette images")
     print(f"Total unique persons tracked: {len(active_track_ids)}")
 
+
 def process_videos_with_pose_detection(videos_folder='videos', 
                                       model_path='yolo11n-pose.pt',
                                       seg_model_path='yolo11n-seg.pt',
@@ -352,13 +347,10 @@ def process_videos_with_pose_detection(videos_folder='videos',
                                       output_folder='data',
                                       apply_morphology=True,
                                       tracker_type='botsort.yaml'):
-    
-    print(f"Loading YOLO pose model: {model_path}")
     pose_model = YOLO(model_path)
-    
+    pose_model.export(format="onnx")
     seg_model = None
     if extraction_mode in ['silhouette', 'both']:
-        print(f"Loading YOLO segmentation model: {seg_model_path}")
         seg_model = YOLO(seg_model_path)
     
     output_folders = create_output_folders(output_folder)
@@ -367,7 +359,6 @@ def process_videos_with_pose_detection(videos_folder='videos',
     videos_path = Path(videos_folder)
     
     if not videos_path.exists():
-        print(f"Creating {videos_folder} folder...")
         videos_path.mkdir(parents=True, exist_ok=True)
         print(f"Please add video files to the '{videos_folder}' folder")
         return
@@ -382,12 +373,10 @@ def process_videos_with_pose_detection(videos_folder='videos',
     print(f"Found {len(video_files)} video(s)")
     
     for video_file in video_files:
-        print(f"\n{'='*60}")
-        print(f"Processing: {video_file.name}")
-        print(f"{'='*60}")
         process_single_video(str(video_file), pose_model, seg_model, output_folders,
                            skip_frames, conf_threshold, line_thickness, 
                            extraction_mode, apply_morphology, tracker_type)
+
 
 def main():
     VIDEOS_FOLDER = 'videos'
@@ -396,27 +385,14 @@ def main():
     POSE_MODEL_PATH = 'yolo11n-pose.pt'
     SEG_MODEL_PATH = 'yolo11n-seg.pt'
     
-    # Options: 'botsort.yaml' (best accuracy) or 'bytetrack.yaml' (fastest)
-    TRACKER_TYPE = 'botsort.yaml'
+    # Options: , 'botsort.yaml', 'bytetrack.yaml'
+    TRACKER_TYPE = 'bytetrack.yaml'
     
     SKIP_FRAMES = 3
     CONF_THRESHOLD = 0.5
-    LINE_THICKNESS = 3
+    LINE_THICKNESS = 2
     EXTRACTION_MODE = 'both'
     APPLY_MORPHOLOGY = True
-    
-    print("="*60)
-    print("YOLOv11 Pose Detection with Built-in Tracking")
-    print("="*60)
-    print(f"Tracker: {TRACKER_TYPE.replace('.yaml', '').upper()}")
-    print(f"Extraction Mode: {EXTRACTION_MODE.upper()}")
-    print(f"Output Folder: {OUTPUT_FOLDER}/")
-    print("\nTracking Options:")
-    print("  BoT-SORT: Best accuracy, handles occlusions & camera motion")
-    print("  ByteTrack: Fastest, good for real-time & simple scenarios")
-    print("  ESC - Stop processing")
-    print("  P   - Pause/Resume")
-    print("="*60)
     
     process_videos_with_pose_detection(
         videos_folder=VIDEOS_FOLDER,
@@ -430,11 +406,8 @@ def main():
         apply_morphology=APPLY_MORPHOLOGY,
         tracker_type=TRACKER_TYPE
     )
-    
-    print("\n" + "="*60)
     print("Processing Complete!")
-    print(f"Check '{OUTPUT_FOLDER}/' folder for outputs")
-    print("="*60)
+
 
 if __name__ == "__main__":
     main()
