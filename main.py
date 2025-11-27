@@ -13,7 +13,7 @@ SEG_MODEL_PATH = "yolo11n-seg.pt"
 SKIP_FRAMES = 3
 CONF_THRESHOLD = 0.5
 LINE_THICKNESS = 2
-EXTRACTION_MODE = "skeleton"
+EXTRACTION_MODE = "both"
 APPLY_MORPHOLOGY = True
 TRACKER_TYPE = 'bytetrack.yaml'
 
@@ -37,6 +37,7 @@ async def run_processing():
 
     except Exception as e:
         return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
+    
 def main():
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

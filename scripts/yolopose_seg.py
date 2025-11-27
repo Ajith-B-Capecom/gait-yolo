@@ -69,7 +69,7 @@ def draw_skeleton(frame, keypoints, confidence_threshold=0.5, line_thickness=3,
         }
     }
     
-    point_color = (255, 0, 0)
+    point_color = (255, 153, 0)
     annotated = frame.copy()
     
     if len(keypoints.shape) == 3:
@@ -151,7 +151,6 @@ def create_person_keypoints_csv(output_folder, all_keypoints_data):
                 writer.writerow(row)
         
         print(f"  Created: {person_id}_keypoints.csv ({len(frames_data)} frames)")
-
 
 
 def process_single_video(video_path, pose_model, seg_model, output_folders, 
@@ -264,7 +263,7 @@ def process_single_video(video_path, pose_model, seg_model, output_folders,
                                 'keypoints': person_kpts
                             })
                             
-                            # Draw track ID on frame
+                            # Draw track ID on annotated frame
                             label = f"ID:{track_id}"
                             label_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)[0]   
                             
@@ -297,19 +296,70 @@ def process_single_video(video_path, pose_model, seg_model, output_folders,
                                 cv2.imwrite(str(silhouette_path), silhouette_img)
                                 saved_count['silhouette'] += 1
             
-            
-            tracker_label =  tracker_type.split('.')[0].upper()
-            cv2.putText(annotated_frame, f"Tracked ({tracker_label})", 
-                       (width + 10, 30), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-            
-            # Add tracking info
-            status_text = f"Saved: {saved_count['cropped']} | Unique IDs: {len(active_track_ids)}"
-            cv2.putText(annotated_frame, status_text, (10, height - 10), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+            # Determine which frame to display based on extraction mode
+            if extraction_mode == 'both' and seg_model is not None:
+                # Create silhouette visualization of the entire frame
+                full_silhouette = extract_silhouette(frame, seg_model, conf_threshold, apply_morphology)
+                silhouette_display = cv2.cvtColor(full_silhouette, cv2.COLOR_GRAY2BGR)
+                
+                # Add labels to both frames
+                tracker_label = tracker_type.split('.')[0].upper()
+                
+                # Label for skeleton frame
+                cv2.putText(annotated_frame, "SKELETON", 
+                           (10, 30), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+                cv2.putText(annotated_frame, f"Tracker: {tracker_label}", 
+                           (10, 70), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                
+                # Label for silhouette frame
+                cv2.putText(silhouette_display, "SILHOUETTE", 
+                           (10, 30), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+                cv2.putText(silhouette_display, f"Tracker: {tracker_label}", 
+                           (10, 70), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                
+                # Add tracking info to both
+                status_text = f"Saved: {saved_count['cropped']} | IDs: {len(active_track_ids)}"
+                cv2.putText(annotated_frame, status_text, (10, height - 10), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                cv2.putText(silhouette_display, status_text, (10, height - 10), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                
+                # Concatenate side by side
+                display_frame = np.hstack([annotated_frame, silhouette_display])
+                
+            elif extraction_mode == 'silhouette' and seg_model is not None:
+                # Show only silhouette
+                full_silhouette = extract_silhouette(frame, seg_model, conf_threshold, apply_morphology)
+                display_frame = cv2.cvtColor(full_silhouette, cv2.COLOR_GRAY2BGR)
+                
+                tracker_label = tracker_type.split('.')[0].upper()
+                cv2.putText(display_frame, f"SILHOUETTE ({tracker_label})", 
+                           (10, 30), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+                
+                status_text = f"Saved: {saved_count['cropped']} | Unique IDs: {len(active_track_ids)}"
+                cv2.putText(display_frame, status_text, (10, height - 10), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                
+            else:
+                # Show only skeleton
+                display_frame = annotated_frame
+                
+                tracker_label = tracker_type.split('.')[0].upper()
+                cv2.putText(display_frame, f"SKELETON ({tracker_label})", 
+                           (10, 30), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+                
+                status_text = f"Saved: {saved_count['cropped']} | Unique IDs: {len(active_track_ids)}"
+                cv2.putText(display_frame, status_text, (10, height - 10), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
             
             # Display frame
-            cv2.imshow(window_name, annotated_frame)
+            cv2.imshow(window_name, display_frame)
             
             # Wait for key press
             key = cv2.waitKey(1) & 0xFF
